@@ -48,15 +48,51 @@ def get_candles_frame(n):
     dfstream["Low"] = dfstream["Low"].astype(float)
 
     dfstream["ATR"] = ta.atr(dfstream.High,dfstream.Low,dfstream.Close,length=7)
-    dfstream["EMA_fast"]= ta.ema(dfstream.Close, 10)
-    dfstream["EMA_slow"]= ta.sma(dfstream.Close, 20)
+    dfstream["EMA_fast"]= ta.ema(dfstream.Close, 30)
+    dfstream["EMA_slow"]= ta.sma(dfstream.Close, 50)
     dfstream["RSI"]= ta.rsi(dfstream.Close, length=10)
-    my_bbands = ta.bbands(171.61, length=7, std=1.5)
+    my_bbands = ta.bbands(dfstream.Close, length=15, std=1.5)
+    dfstream=dfstream.join(my_bbands)
     return dfstream
 
-daframe = get_candles_frame(2000)
-print(daframe)
-daframe.to_csv("Testinggggg.csv", index=False)
+def ema_signal(df,current_candle,backcandles):
+    df_slice = df.reset_index().copy()
+    start = max(0,current_candle- backcandles)
+    end = current_candle
+    relevant_rows = df_slice.iloc[start:end]
+
+    if all(relevant_rows["EMA_fast"] < relevant_rows["EMA_slow"]):
+        return 1
+    elif all(relevant_rows["EMA_fast"] > relevant_rows["EMA_slow"]):
+        return 2
+    else:
+        return 0
+
+def total_signal(df,current_candle,backcandles):
+    if(ema_signal(df,current_candle,backcandles)==2
+       and df.Close[current_candle]<=df["BBL_15_1.5"][current_candle]
+      ): return 2
+    if (ema_signal(df,current_candle,backcandles)==1
+        and df.Close[current_candle]>=df['BBU_15_1.5'][current_candle]
+
+        ): return 1
+    return 0
+
+
+daframe=get_candles_frame(2000)
+daframe=daframe[-2000:-1]
+from tqdm import tqdm
+tqdm.pandas()
+daframe.reset_index(inplace=True)
+daframe["EMASignal"] = daframe.progress_apply(lambda row: ema_signal(daframe,row.name,7) if row.name >= 20 else 0, axis=1)
+daframe["TotalSignal"]= daframe.progress_apply(lambda row: total_signal(daframe, row.name, 7), axis=1)
+print(daframe["TotalSignal"],daframe["EMASignal"])
+daframe.to_csv("Daframe.csv",index=False)
+
+
+
+
+
 
 
 # Make BUY and SELL orders using data
