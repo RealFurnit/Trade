@@ -94,7 +94,6 @@ def SIGNAL():
     return df.TotalSignal
 
 # Trading job
-from datetime import datetime
 
 def trading_job():
     dfstream = get_candles_frame(10000,"RH")
