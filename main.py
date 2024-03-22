@@ -81,12 +81,10 @@ def ema_signal(df, current_candle, backcandles):
 def total_signal(df, current_candle, backcandles):
     if (ema_signal(df, current_candle, backcandles)==2
         and df.Close[current_candle]<=df['BBL_15_1.5'][current_candle]
-        #and df.RSI[current_candle]<60
         ):
             return 2
     if (ema_signal(df, current_candle, backcandles)==1
         and df.Close[current_candle]>=df['BBU_15_1.5'][current_candle]
-        #and df.RSI[current_candle]>40
         ):
     
             return 1
