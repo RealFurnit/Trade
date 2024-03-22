@@ -6,8 +6,8 @@ from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
 from datetime import datetime
 import pandas as pd
-import talib as tae
 import pandas_ta as ta
+from apscheduler.schedulers.blocking import BlockingScheduler
 from dotenv import load_dotenv
 
 # Load the stored environment variables
@@ -28,10 +28,8 @@ def getLastQuote(symb):
     result = data_client.get_stock_latest_quote(req)
     return result
 
-
-
 def getCandles(n,symb):
-    candles=data_client.get_stock_bars(StockBarsRequest(symbol_or_symbols=[symb],timeframe=TimeFrame.Day,start=start_time,limit=n,sort="desc"))
+    candles=data_client.get_stock_bars(StockBarsRequest(symbol_or_symbols=[symb],timeframe=TimeFrame(5,TimeFrameUnit("Min")),start=start_time,limit=n,sort="desc"))
     return candles
 
 
@@ -78,7 +76,7 @@ def ema_signal(df, current_candle, backcandles):
     elif all(relevant_rows["EMA_fast"] > relevant_rows["EMA_slow"]):
         return 2
     else:
-        return 0   
+        return 0
 
 def total_signal(df, current_candle, backcandles):
     if (ema_signal(df, current_candle, backcandles)==2
@@ -95,22 +93,22 @@ def total_signal(df, current_candle, backcandles):
     return 0
 
 def SIGNAL():
-    return daframe.TotalSignal
+    return df.TotalSignal
 
 # Trading job
 from datetime import datetime
 
-def trading_job(symb):
-    dfstream = get_candles_frame(2000,symb)
+def trading_job():
+    dfstream = get_candles_frame(10000,"RH")
     signal = total_signal(dfstream, len(dfstream)-1, 7)
 
     slatr = 1.1*dfstream.ATR.iloc[-1]
     TPSLRatio=1.5
     max_spread=16e-5
 
-    candle = getLastQuote(symb)
-    candle_open_bid = float(str(candle[symb].bid_price))
-    candle_open_ask = float(str(candle[symb].ask_price))
+    candle = getLastQuote("RH")
+    candle_open_bid = float(str(candle["RH"].bid_price))
+    candle_open_ask = float(str(candle["RH"].ask_price))
     spread = candle_open_ask - candle_open_bid
 
     SLBuy = candle_open_ask+slatr*TPSLRatio+spread
@@ -123,8 +121,8 @@ def trading_job(symb):
     if signal == 1 and getOpenedTrades() == 0 and spread<max_spread:
         print("Sell Signal Found...")
         mor = MarketOrderRequest(
-            symbol=symb,
-            qty=1,
+            symbol="RH",
+            qty=3,
             side=OrderSide.SELL,
             take_profit=TakeProfitRequest(
                 TPSell
@@ -134,36 +132,25 @@ def trading_job(symb):
             )
         )
         mo = trading_client.submit_order(order_data=mor)
-        
+        print(mo)
+    #BUY
+    elif signal == 2 and getOpenedTrades() == 0 and spread<max_spread:
+        print("Buy Signal Found...")
+        mor = MarketOrderRequest(
+            symbol="RH",
+            qty=3,
+            side=OrderSide.BUY,
+            take_profit=TakeProfitRequest(
+                TPBuy
+            ),
+            stop_loss=StopLossRequest(
+                SLBuy
+            )
+        )
+        mo = trading_client.submit_order(order_data=mor)
+        print(mo)
 
-
-trading_job("SPY")
-# Make BUY and SELL orders using data
-
-"""market_order_data = MarketOrderRequest(
-    symbol="SPY",
-    qty=1,
-    side=OrderSide.BUY,
-    time_in_force=TimeInForce.DAY
-)
-
-# Market order
-market_order = trading_client.submit_order(
-    order_data=market_order_data
-)
-
-trading_stream = TradingStream("PKNUQZ0GZBVJO93DIJX0", "4Y3AHu81cUoklfaG8dCJey5d0fC0RbHwwPjWFxTy", paper=True)
-
-async def update_handler(data):
-    # trade updates will arrive in our async handler
-    print(data)
-
-# subscribe to trade updates and supply the handler as a parameter
-trading_stream.subscribe_trade_updates(update_handler)
-
-# start our websocket streaming
-trading_stream.run()
-
-positions = trading_client.get_all_positions()
-
-print(positions)"""
+#Executing orders automatically with a scheduler
+scheduler = BlockingScheduler()
+scheduler.add_job(trading_job, "cron", day_of_week="mon-fri", hour="00-23", minute="1,6,11,16,21,26,31,36,41,46,51,56", timezone="America/New_York")
+scheduler.start()
