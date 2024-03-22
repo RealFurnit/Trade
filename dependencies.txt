@@ -1,6 +1,0 @@
-alpaca-py
-pandas
-pandas_ta
-tqdm
-python-dotenv
-APScheduler
