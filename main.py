@@ -1,9 +1,10 @@
-import os
-from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import  MarketOrderRequest,TakeProfitRequest, StopLossRequest
-from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+import os 
+from alpaca.trading.client import TradingClient 
+from alpaca.trading.requests import  MarketOrderRequest,TakeProfitRequest, StopLossRequest,GetOrdersRequest 
+from alpaca.data.historical import StockHistoricalDataClient 
+from alpaca.data.timeframe import TimeFrame, TimeFrameUnit 
 from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
+from alpaca.trading.enums import OrderSide,TimeInForce,QueryOrderStatus
 from datetime import datetime
 import pandas as pd
 import pandas_ta as ta
@@ -27,15 +28,17 @@ def getLastQuote(symb):
     req=StockLatestQuoteRequest(symbol_or_symbols=[symb])
     result = data_client.get_stock_latest_quote(req)
     return result
-
+    
 def getCandles(n,symb):
     candles=data_client.get_stock_bars(StockBarsRequest(symbol_or_symbols=[symb],timeframe=TimeFrame(5,TimeFrameUnit("Min")),start=start_time,limit=n,sort="desc"))
     return candles
 
-
-def getOpenedTrades(symb):
-    positions = trading_client.get_all_positions()
+def getOpenedTrades():
+    positions = trading_client.get_orders(GetOrdersRequest(status=QueryOrderStatus.OPEN))
+    print(positions)
     return len(positions)
+
+print(getOpenedTrades())
 
 def get_candles_frame(n, symb):
     candles = getCandles(n,symb)
@@ -47,7 +50,7 @@ def get_candles_frame(n, symb):
         dfstream.loc[x, ["Close"]] = float(str(candles.data[symb][x].close))
         dfstream.loc[x, ["High"]] = float(str(candles.data[symb][x].high))
         dfstream.loc[x, ["Low"]] = float(str(candles.data[symb][x].low))
-        
+
     #dfstream["Date"]=pd.to_datetime(df["Date"], format='')
 
     dfstream["Open"] = dfstream["Open"].astype(float)
@@ -86,7 +89,7 @@ def total_signal(df, current_candle, backcandles):
     if (ema_signal(df, current_candle, backcandles)==1
         and df.Close[current_candle]>=df['BBU_15_1.5'][current_candle]
         ):
-    
+
             return 1
     return 0
 
@@ -96,53 +99,52 @@ def SIGNAL():
 # Trading job
 
 def trading_job():
-    dfstream = get_candles_frame(10000,"RH")
+    print("Tick")
+    dfstream = get_candles_frame(10000,"TSLA")
     signal = total_signal(dfstream, len(dfstream)-1, 7)
-
+    print(signal)
     slatr = 1.1*dfstream.ATR.iloc[-1]
     TPSLRatio=1.5
-    max_spread=16e-5
+    max_spread=1000000000000000
 
-    candle = getLastQuote("RH")
-    candle_open_bid = float(str(candle["RH"].bid_price))
-    candle_open_ask = float(str(candle["RH"].ask_price))
+    candle = getLastQuote("TSLA")
+    candle_open_bid = float(str(candle["TSLA"].bid_price))
+    candle_open_ask = float(str(candle["TSLA"].ask_price))
     spread = candle_open_ask - candle_open_bid
-
     SLBuy = candle_open_ask+slatr*TPSLRatio+spread
     SLSell = candle_open_ask+slatr+spread
 
     TPBuy = candle_open_ask+slatr*TPSLRatio+spread
     TPSell = candle_open_bid-slatr*TPSLRatio-spread
-
+    print(spread)
     #SELL
-    if signal == 1 and getOpenedTrades() == 0 and spread<max_spread:
+    if signal == 1 and getOpenedTrades() == 0  and spread<max_spread:
         print("Sell Signal Found...")
+        TPRequest = TakeProfitRequest(limit_price=TPSell)
+        SLRequest = StopLossRequest(stop_price=SLSell)
+        print(TPRequest)
         mor = MarketOrderRequest(
-            symbol="RH",
+            symbol="TSLA",
             qty=3,
             side=OrderSide.SELL,
-            take_profit=TakeProfitRequest(
-                TPSell
-            ),
-            stop_loss=StopLossRequest(
-                SLSell
-            )
+            take_profit=TPRequest,
+            stop_loss=SLRequest,
+            time_in_force=TimeInForce.GTC
         )
         mo = trading_client.submit_order(order_data=mor)
         print(mo)
     #BUY
-    elif signal == 2 and getOpenedTrades() == 0 and spread<max_spread:
+    elif signal == 2 and getOpenedTrades() == 0  and spread<max_spread:
         print("Buy Signal Found...")
+        TPRequest = TakeProfitRequest(limit_price=TPBuy)
+        SLRequest = StopLossRequest(stop_price=SLBuy)
         mor = MarketOrderRequest(
-            symbol="RH",
+            symbol="TSLA",
             qty=3,
             side=OrderSide.BUY,
-            take_profit=TakeProfitRequest(
-                TPBuy
-            ),
-            stop_loss=StopLossRequest(
-                SLBuy
-            )
+            take_profit=TPRequest,
+            stop_loss=SLRequest,
+            time_in_force=TimeInForce.GTC
         )
         mo = trading_client.submit_order(order_data=mor)
         print(mo)
