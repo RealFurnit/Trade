@@ -99,17 +99,22 @@ def SIGNAL():
 # Trading job
 
 def trading_job():
+    # The stock of your choice:
+    sym = "TSLA"
+    # How many stocks to buy each time, Default is 1
+    qt = 1
+
     print("Tick")
-    dfstream = get_candles_frame(10000,"TSLA")
+    dfstream = get_candles_frame(10000,sym)
     signal = total_signal(dfstream, len(dfstream)-1, 7)
     print(signal)
     slatr = 1.1*dfstream.ATR.iloc[-1]
     TPSLRatio=1.5
     max_spread=1000000000000000
 
-    candle = getLastQuote("TSLA")
-    candle_open_bid = float(str(candle["TSLA"].bid_price))
-    candle_open_ask = float(str(candle["TSLA"].ask_price))
+    candle = getLastQuote(sym)
+    candle_open_bid = float(str(candle[sym].bid_price))
+    candle_open_ask = float(str(candle[sym].ask_price))
     spread = candle_open_ask - candle_open_bid
     SLBuy = candle_open_ask+slatr*TPSLRatio+spread
     SLSell = candle_open_ask+slatr+spread
@@ -124,8 +129,8 @@ def trading_job():
         SLRequest = StopLossRequest(stop_price=SLSell)
         print(TPRequest)
         mor = MarketOrderRequest(
-            symbol="TSLA",
-            qty=3,
+            symbol=sym,
+            qty=qt,
             side=OrderSide.SELL,
             take_profit=TPRequest,
             stop_loss=SLRequest,
@@ -139,8 +144,8 @@ def trading_job():
         TPRequest = TakeProfitRequest(limit_price=TPBuy)
         SLRequest = StopLossRequest(stop_price=SLBuy)
         mor = MarketOrderRequest(
-            symbol="TSLA",
-            qty=3,
+            symbol=sym,
+            qty=qt,
             side=OrderSide.BUY,
             take_profit=TPRequest,
             stop_loss=SLRequest,
